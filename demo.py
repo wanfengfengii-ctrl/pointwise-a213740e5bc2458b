@@ -87,7 +87,49 @@ def main():
                 summary = {'result_id': document['result_id'], 'unit': document['package']['output_unit'],
                            'required_samples': document['package']['required_samples'], 'rows': document['rows']}
                 print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        demonstrate_recovery(directory)
     return 0
+
+
+def demonstrate_recovery(directory):
+    """Partial recovery, source outage, and an export read back from the ledger."""
+    from ledger.admission import publish_recovery
+    from ledger.recovery_audit import audit_recovery
+    from processing.replay import recover_points
+    from recovery_cases import BASE_REFS, TARGETS, seed_ledger
+    from source.sample_map import SparseSamples
+
+    directory = Path(directory)
+    station_path = directory / 'recovery-station.sqlite'
+    ledger_path = directory / 'recovery-field.sqlite'
+    with closing(ResultStore(ledger_path)) as ledger:
+        revision = seed_ledger(ledger, station_path)
+    # The station stores are closed now; only the field ledger remains.
+    station_path.unlink()
+    with closing(ResultStore(ledger_path)) as ledger:
+        partial = recover_points(ledger, SparseSamples(revision, {}), BASE_REFS, TARGETS)
+        print(json.dumps({'stage': 'partial', 'candidate': partial}, ensure_ascii=False, sort_keys=True))
+        publish_recovery(ledger, 'REC-1', partial)
+        solved = recover_points(ledger, SparseSamples(revision, {3: 7}), BASE_REFS, TARGETS)
+        print(json.dumps({'stage': 'solved', 'candidate': solved}, ensure_ascii=False, sort_keys=True))
+        publish_recovery(ledger, 'REC-2', solved)
+    with closing(ResultStore(ledger_path)) as ledger:
+        for result_id in ('REC-1', 'REC-2'):
+            exported = json.loads(export_result(ledger, result_id))
+            audit = audit_recovery(ledger, result_id)
+            print(json.dumps({
+                'stage': 'reopened',
+                'result_id': result_id,
+                'format': exported['format'],
+                'rows': exported['rows'],
+                'evidence': audit['evidence'],
+                'status_counts': audit['status_counts'],
+            }, ensure_ascii=False, sort_keys=True))
+        legacy = read_result(ledger, 'sum')
+        print(json.dumps({'stage': 'legacy', 'result_id': 'sum',
+                          'rows': [{'index': row.index, 'value': [row.value.numerator,
+                                                                  row.value.denominator]}
+                                   for row in legacy.rows]}, sort_keys=True))
 
 
 if __name__ == '__main__':

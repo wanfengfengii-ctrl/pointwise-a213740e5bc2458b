@@ -2,6 +2,8 @@
 
 材料试验站把振动台定标读值交给外场复核组。原始记录可以有缺口。外场按指定窗口领取所需原样点，断开站内库后加工，接班员从独立账册领取历史结果。
 
+缺样反求与凭据入账见 `RECOVERY.md`，接班核对步骤见 `RECOVERY_HANDOFF.md`。
+
 ## 一天的交接
 
 1. 采集员接纳 `examples/acquisition.json`，发布长度为 3、单位为 `mm/s` 的修订。样点 0 为 2，样点 2 为 7，样点 1 缺测。
@@ -37,6 +39,8 @@ python3 demo.py
 | 断源加工 | `processing.replay.run_window(package, samples)` 接受 `WindowPackage` 或 V1 JSON 和 `SparseSamples`，返回带交接绑定的 `OfflineRows`。`ValueRow.value` 为 `Fraction`，`MissingRow.missing` 是升序原下标元组。单位由 `package.units.output_unit` 提供。 |
 | 成果发布 | `ledger.admission.publish_result(ledger, result_id, package, rows)` 核对固定交接、窗口覆盖、正文形状及欠读来源后提交，返回 `ArchivedResult`。 |
 | 重开领取 | `ledger.report_reader.read_result(ledger, result_id)` 返回独立成果副本，`ledger.export.export_result(ledger, result_id)` 返回确定性 JSON 字节。 |
+| 缺样反求 | `processing.replay.recover_points(ledger, samples, row_refs, targets)` 从本地账册的已提交 V1 数值行按冻结单级配方建立精确有理方程，返回逐点分类候选。 |
+| 反求入账 | `ledger.admission.publish_recovery(ledger, result_id, candidate, *, before_commit=None)` 从账册重建方程并独立核验分类、证据与整组一致性后提交，返回正式成果字典；`ledger.recovery_audit.audit_recovery(ledger, result_id)` 供接班独立核账。 |
 
 `RevisionStore`、`RecipeStore` 和 `WindowIssueStore` 可以连接同一站内 SQLite 文件，`ResultStore` 使用独立账册文件。打开仓储后调用 `initialize()` 建表，用毕调用 `close()`。重复初始化保留已经写入的业务状态。成果发布的可选关键字 `before_commit` 可在行已写入且尚未提交时检查事务边界。回调抛出的异常向上传播，表头和行整次回滚。
 
@@ -55,3 +59,4 @@ python3 demo.py
 | V4–V6 | `tests/test_replay.py` 核对独立文件断源加工、边界、精确分数、全部欠读、实测零、非法包和串修订。 |
 | V7、V8 | `tests/test_ledger.py` 核对绑定和行覆盖、幂等重放、冲突、空成果、重复初始化、提交前失败及重试。 |
 | V9 | `tests/test_shift.py` 核对从旧交接重领原样点、显式分支更正、分别加工及重开领取。 |
+| V10 | `tests/test_recovery.py` 与 `check_recovery_chain.py` 核对缺样反求的分类、唯一反求、证据线性组合、发布重放、冲突与改造候选拒绝、提交前失败重试、独立核账及旧库兼容。 |
