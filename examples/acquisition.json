@@ -1,0 +1,6 @@
+{
+  "source": "east-dock-table",
+  "length": 3,
+  "unit": "mm/s",
+  "samples": [[0, 2], [2, 7]]
+}
